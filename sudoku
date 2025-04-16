@@ -1,0 +1,120 @@
+#include "raylib.h"
+#include <iostream>
+#include <vector>
+#include <string>
+
+const int screenWidth = 540;
+const int screenHeight = 600;
+const int gridSize = 9;
+const int cellSize = 60;
+const int offsetY = 60;
+
+int selectedRow = -1;
+int selectedCol = -1;
+
+int board[9][9] = {
+    {5,3,0,0,7,0,0,0,0},
+    {6,0,0,1,9,5,0,0,0},
+    {0,9,8,0,0,0,0,6,0},
+    {8,0,0,0,6,0,0,0,3},
+    {4,0,0,8,0,3,0,0,1},
+    {7,0,0,0,2,0,0,0,6},
+    {0,6,0,0,0,0,2,8,0},
+    {0,0,0,4,1,9,0,0,5},
+    {0,0,0,0,8,0,0,7,9}
+};
+
+bool editable[9][9];
+
+void InitEditable() {
+    for (int row = 0; row < 9; row++)
+        for (int col = 0; col < 9; col++)
+            editable[row][col] = board[row][col] == 0;
+}
+
+void DrawGrid() {
+    for (int i = 0; i <= gridSize; i++) {
+        float y = offsetY + i * cellSize;
+        float x = i * cellSize;
+        int thickness = (i % 3 == 0) ? 4 : 1;
+
+        DrawLineEx(Vector2{0.0f, y}, Vector2{(float)screenWidth, y}, (float)thickness, BLACK);
+        DrawLineEx(Vector2{x, (float)offsetY}, Vector2{x, (float)screenHeight}, (float)thickness, BLACK);
+    }
+}
+
+void DrawBoard() {
+    for (int row = 0; row < gridSize; row++) {
+        for (int col = 0; col < gridSize; col++) {
+            int num = board[row][col];
+            if (num != 0) {
+                std::string text = std::to_string(num);
+                int fontSize = 30;
+                int x = col * cellSize + cellSize / 2;
+                int y = row * cellSize + offsetY + cellSize / 2;
+                Vector2 size = MeasureTextEx(GetFontDefault(), text.c_str(), fontSize, 1);
+                DrawText(text.c_str(), x - size.x / 2, y - size.y / 2, fontSize, editable[row][col] ? DARKGRAY : BLACK);
+            }
+        }
+    }
+}
+
+void HandleInput() {
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        Vector2 mouse = GetMousePosition();
+        int col = mouse.x / cellSize;
+        int row = (mouse.y - offsetY) / cellSize;
+        if (col >= 0 && col < 9 && row >= 0 && row < 9) {
+            selectedCol = col;
+            selectedRow = row;
+        }
+    }
+
+    if (selectedRow != -1 && selectedCol != -1 && editable[selectedRow][selectedCol]) {
+        for (int key = KEY_ONE; key <= KEY_NINE; key++) {
+            if (IsKeyPressed(key)) {
+                board[selectedRow][selectedCol] = key - KEY_ZERO;
+            }
+        }
+        if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_DELETE)) {
+            board[selectedRow][selectedCol] = 0;
+        }
+    }
+}
+
+void HighlightSelectedCell() {
+    if (selectedRow != -1 && selectedCol != -1) {
+        DrawRectangleLinesEx(
+            Rectangle{
+                (float)(selectedCol * cellSize),
+                (float)(offsetY + selectedRow * cellSize),
+                (float)cellSize,
+                (float)cellSize
+            },
+            3.0f,
+            RED
+        );
+    }
+}
+
+int main() {
+    InitWindow(screenWidth, screenHeight, "Sudoku Game - raylib + C++");
+    SetTargetFPS(60);
+
+    InitEditable();
+
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+
+        DrawGrid();
+        DrawBoard();
+        HighlightSelectedCell();
+        HandleInput();
+
+        EndDrawing();
+    }
+
+    CloseWindow();
+    return 0;
+}
