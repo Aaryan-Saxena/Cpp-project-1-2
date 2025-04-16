@@ -1,0 +1,323 @@
+#include "raylib.h"
+#include <vector>
+#include <deque>
+#include <cstdlib>
+#include <ctime>
+
+// Game constants
+const int SCREEN_WIDTH = 800;
+const int SCREEN_HEIGHT = 600;
+const int GRID_SIZE = 20;
+const int INITIAL_SNAKE_SIZE = 3;
+
+// Game states
+enum class GameState { PLAYING, PAUSED, GAME_OVER };
+
+// Direction enumeration
+enum class Direction { UP, DOWN, LEFT, RIGHT };
+
+// Snake segment structure
+struct Segment {
+    int x, y;
+    Segment(int posX, int posY) : x(posX), y(posY) {}
+};
+
+// Snake class
+class Snake {
+private:
+    std::deque<Segment> body;
+    Direction direction;
+    Direction nextDirection;
+    bool hasEaten;
+
+public:
+    Snake(int startX, int startY) {
+        // Initialize snake with three segments
+        for (int i = 0; i < INITIAL_SNAKE_SIZE; i++) {
+            body.push_back(Segment(startX - i, startY));
+        }
+        direction = Direction::RIGHT;
+        nextDirection = Direction::RIGHT;
+        hasEaten = false;
+    }
+
+    void setDirection(Direction newDir) {
+        // Prevent 180-degree turns
+        if ((direction == Direction::UP && newDir == Direction::DOWN) ||
+            (direction == Direction::DOWN && newDir == Direction::UP) ||
+            (direction == Direction::LEFT && newDir == Direction::RIGHT) ||
+            (direction == Direction::RIGHT && newDir == Direction::LEFT)) {
+            return;
+        }
+        nextDirection = newDir;
+    }
+
+    void move() {
+        direction = nextDirection;
+        
+        // Calculate new head position
+        int headX = body.front().x;
+        int headY = body.front().y;
+        
+        switch (direction) {
+            case Direction::UP: headY--; break;
+            case Direction::DOWN: headY++; break;
+            case Direction::LEFT: headX--; break;
+            case Direction::RIGHT: headX++; break;
+        }
+        
+        // Add new head
+        body.push_front(Segment(headX, headY));
+        
+        // Remove tail if not growing
+        if (!hasEaten) {
+            body.pop_back();
+        } else {
+            hasEaten = false;
+        }
+    }
+
+    void grow() {
+        hasEaten = true;
+    }
+
+    bool checkCollisionWithSelf() {
+        // Check if head collides with any other segment
+        const Segment& head = body.front();
+        for (size_t i = 1; i < body.size(); i++) {
+            if (head.x == body[i].x && head.y == body[i].y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool checkCollisionWithWalls(int width, int height) {
+        // Check if head is outside boundaries
+        const Segment& head = body.front();
+        int gridWidth = width / GRID_SIZE;
+        int gridHeight = height / GRID_SIZE;
+        
+        return (head.x < 0 || head.x >= gridWidth || 
+                head.y < 0 || head.y >= gridHeight);
+    }
+
+    bool checkCollisionWithFood(int foodX, int foodY) {
+        const Segment& head = body.front();
+        return (head.x == foodX && head.y == foodY);
+    }
+
+    void draw() {
+        // Draw each segment
+        for (size_t i = 0; i < body.size(); i++) {
+            Color color = (i == 0) ? GREEN : LIME; // Head is darker green
+            DrawRectangle(
+                body[i].x * GRID_SIZE, 
+                body[i].y * GRID_SIZE, 
+                GRID_SIZE, 
+                GRID_SIZE, 
+                color
+            );
+        }
+    }
+
+    const std::deque<Segment>& getBody() const {
+        return body;
+    }
+};
+
+// Food class
+class Food {
+private:
+    int x, y;
+    int gridWidth, gridHeight;
+
+public:
+    Food(int width, int height) {
+        gridWidth = width / GRID_SIZE;
+        gridHeight = height / GRID_SIZE;
+        
+        // Initialize random seed
+        std::srand(static_cast<unsigned int>(std::time(nullptr)));
+        respawn(std::deque<Segment>());
+    }
+
+    void respawn(const std::deque<Segment>& snakeBody) {
+        bool validPosition = false;
+        
+        while (!validPosition) {
+            // Generate random position
+            x = std::rand() % gridWidth;
+            y = std::rand() % gridHeight;
+            
+            // Make sure food doesn't spawn on snake
+            validPosition = true;
+            for (const auto& segment : snakeBody) {
+                if (segment.x == x && segment.y == y) {
+                    validPosition = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    void draw() {
+        DrawRectangle(
+            x * GRID_SIZE, 
+            y * GRID_SIZE, 
+            GRID_SIZE, 
+            GRID_SIZE, 
+            RED
+        );
+    }
+
+    int getX() const { return x; }
+    int getY() const { return y; }
+};
+
+// Game class
+class Game {
+private:
+    Snake snake;
+    Food food;
+    GameState state;
+    int score;
+    int frameCounter;
+    int moveInterval;
+    bool showGrid;
+
+public:
+    Game() : 
+        snake(SCREEN_WIDTH / (2 * GRID_SIZE), SCREEN_HEIGHT / (2 * GRID_SIZE)),
+        food(SCREEN_WIDTH, SCREEN_HEIGHT),
+        state(GameState::PLAYING),
+        score(0),
+        frameCounter(0),
+        moveInterval(10),
+        showGrid(true) {
+    }
+
+    void update() {
+        if (IsKeyPressed(KEY_P)) {
+            if (state == GameState::PLAYING) state = GameState::PAUSED;
+            else if (state == GameState::PAUSED) state = GameState::PLAYING;
+        }
+
+        if (IsKeyPressed(KEY_G)) {
+            showGrid = !showGrid;
+        }
+
+        if (state == GameState::GAME_OVER && IsKeyPressed(KEY_R)) {
+            reset();
+            return;
+        }
+
+        if (state != GameState::PLAYING) return;
+
+        // Handle input
+        if (IsKeyPressed(KEY_UP)) snake.setDirection(Direction::UP);
+        else if (IsKeyPressed(KEY_DOWN)) snake.setDirection(Direction::DOWN);
+        else if (IsKeyPressed(KEY_LEFT)) snake.setDirection(Direction::LEFT);
+        else if (IsKeyPressed(KEY_RIGHT)) snake.setDirection(Direction::RIGHT);
+
+        // Update movement
+        frameCounter++;
+        if (frameCounter >= moveInterval) {
+            frameCounter = 0;
+            
+            snake.move();
+            
+            // Check collisions
+            if (snake.checkCollisionWithWalls(SCREEN_WIDTH, SCREEN_HEIGHT) || 
+                snake.checkCollisionWithSelf()) {
+                state = GameState::GAME_OVER;
+                return;
+            }
+            
+            // Check if snake ate food
+            if (snake.checkCollisionWithFood(food.getX(), food.getY())) {
+                snake.grow();
+                food.respawn(snake.getBody());
+                score++;
+                
+                // Speed up game slightly when score increases
+                if (moveInterval > 3 && score % 5 == 0) {
+                    moveInterval--;
+                }
+            }
+        }
+    }
+
+    void draw() {
+        ClearBackground(BLACK);
+        
+        // Draw grid
+        if (showGrid) {
+            for (int x = 0; x < SCREEN_WIDTH; x += GRID_SIZE) {
+                DrawLine(x, 0, x, SCREEN_HEIGHT, ColorAlpha(GRAY, 0.3f));
+            }
+            for (int y = 0; y < SCREEN_HEIGHT; y += GRID_SIZE) {
+                DrawLine(0, y, SCREEN_WIDTH, y, ColorAlpha(GRAY, 0.3f));
+            }
+        }
+        
+        // Draw snake and food
+        snake.draw();
+        food.draw();
+        
+        // Draw UI elements
+        DrawText(TextFormat("Score: %i", score), 10, 10, 20, WHITE);
+        DrawText("P - Pause | G - Toggle Grid | R - Restart", 10, SCREEN_HEIGHT - 30, 20, GRAY);
+        
+        // Game state messages
+        if (state == GameState::PAUSED) {
+            DrawRectangle(0, SCREEN_HEIGHT/2 - 40, SCREEN_WIDTH, 80, ColorAlpha(BLACK, 0.7f));
+            const char* pauseText = "GAME PAUSED - Press P to Resume";
+            int textWidth = MeasureText(pauseText, 30);
+            DrawText(pauseText, (SCREEN_WIDTH - textWidth)/2, SCREEN_HEIGHT/2 - 15, 30, YELLOW);
+        }
+        else if (state == GameState::GAME_OVER) {
+            DrawRectangle(0, SCREEN_HEIGHT/2 - 60, SCREEN_WIDTH, 120, ColorAlpha(BLACK, 0.7f));
+            const char* gameOverText = "GAME OVER";
+            int textWidth = MeasureText(gameOverText, 40);
+            DrawText(gameOverText, (SCREEN_WIDTH - textWidth)/2, SCREEN_HEIGHT/2 - 40, 40, RED);
+            
+            const char* scoreText = TextFormat("FINAL SCORE: %i", score);
+            textWidth = MeasureText(scoreText, 30);
+            DrawText(scoreText, (SCREEN_WIDTH - textWidth)/2, SCREEN_HEIGHT/2, 30, WHITE);
+            
+            const char* restartText = "Press R to Restart";
+            textWidth = MeasureText(restartText, 20);
+            DrawText(restartText, (SCREEN_WIDTH - textWidth)/2, SCREEN_HEIGHT/2 + 40, 20, GRAY);
+        }
+    }
+
+    void reset() {
+        snake = Snake(SCREEN_WIDTH / (2 * GRID_SIZE), SCREEN_HEIGHT / (2 * GRID_SIZE));
+        food.respawn(snake.getBody());
+        state = GameState::PLAYING;
+        score = 0;
+        frameCounter = 0;
+        moveInterval = 10;
+    }
+};
+
+int main() {
+    // Initialize window
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Snake Game");
+    SetTargetFPS(60);
+    
+    Game game;
+    
+    // Main game loop
+    while (!WindowShouldClose()) {
+        game.update();
+        
+        BeginDrawing();
+        game.draw();
+        EndDrawing();
+    }
+    
+    CloseWindow();
+    return 0;
+}
